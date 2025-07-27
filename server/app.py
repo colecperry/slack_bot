@@ -1,19 +1,30 @@
-'''
-app.py creates a lightweight web server using Flask
-'''
+from flask import Flask, request, make_response, jsonify
+from datetime import datetime
 
-from flask import Flask, request, make_response
+app = Flask(__name__)
+user_updates = {}
 
-app = Flask(__name__) # Initialize the app
-
-# route /standup, slack sends a post request to our server
-@app.route('/standup', methods=['POST'])
+@app.route("/standup", methods=["POST"])
 def standup():
-    data = request.form  # Slack sends form-encoded data
-    print("Received data:", data)
+    user_id = request.form.get("user_id")
+    text = request.form.get("text", "").strip()
 
-    return make_response("Got it!", 200)
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-if __name__ == '__main__':
-    app.run(port=5000)
+    if not text:
+        response_text = "👋 What did you work on today?"
+    else:
+        # Save the update
+        user_updates[user_id] = {
+            "update": text,
+            "timestamp": timestamp
+        }
+        response_text = f":white_check_mark: Got your update at *{timestamp}*\n> {text}"
 
+    return jsonify({
+        "response_type": "ephemeral",  # only the user sees this
+        "text": response_text
+    })
+
+if __name__ == "__main__":
+    app.run(port=3000)
