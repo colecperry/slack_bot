@@ -1,6 +1,6 @@
 # summary_lambda.py
 """
-Daily standup summary Lambda:
+Runs daily to collect all yesterday's standups and post a team summary to slack
 - Computes *yesterday* in a chosen timezone (default America/Los_Angeles)
 - Scans DynamoDB standup_logs for items with ts between [start_utc, end_utc)
 - Groups by user and posts a summary to a Slack channel via chat.postMessage
@@ -26,7 +26,8 @@ ddb = boto3.resource("dynamodb")
 table = ddb.Table(TABLE_NAME)
 
 def _day_range_utc(target_tz: str) -> tuple[str, str, str]:
-    """Returns (label, start_utc_iso, end_utc_iso) for *yesterday* in target_tz."""
+    """- Figures out what "yesterday" means in your timezone and converts to database time
+       - returns (label, start_utc_iso, end_utc_iso) for *yesterday* in target_tz."""
     tz = ZoneInfo(target_tz)
     now_local = datetime.now(tz)
     y_local = (now_local - timedelta(days=1)).date()
@@ -40,8 +41,9 @@ def _day_range_utc(target_tz: str) -> tuple[str, str, str]:
 
 def _fetch_items_between(start_iso: str, end_iso: str) -> list[dict]:
     """
-    SCAN + FilterExpression on ts (fine for small volumes).
-    For scale, add a GSI keyed by date and switch to Query.
+    Gets all standup messages from the db within the time range
+    - SCAN + FilterExpression on ts (fine for small volumes).
+    - For scale, add a GSI keyed by date and switch to Query.
     """
     from boto3.dynamodb.conditions import Attr
     items: list[dict] = []
@@ -59,6 +61,9 @@ def _fetch_items_between(start_iso: str, end_iso: str) -> list[dict]:
     return items
 
 def _format_blocks(day_label: str, items: list[dict]) -> list[dict]:
+    """
+    Groups messages by person and formats them into slack message layout
+    """
     if not items:
         return [{"type": "section", "text": {"type": "mrkdwn",
                  "text": f"*Standups for {day_label}*\n_No submissions yesterday._"}}]
@@ -79,6 +84,9 @@ def _format_blocks(day_label: str, items: list[dict]) -> list[dict]:
     return blocks
 
 def _post_blocks(blocks: list[dict]) -> dict:
+    """
+    Sends the formatted summary to the team Slack channel
+    """
     url = "https://slack.com/api/chat.postMessage"
     headers = {"Authorization": f"Bearer {SLACK_BOT_TOKEN}",
                "Content-Type": "application/json"}
@@ -90,6 +98,13 @@ def _post_blocks(blocks: list[dict]) -> dict:
     return j
 
 def handler(event, context):
+    """
+    Main function that:
+        - calculates yesterday's time range
+        - gets all standups from db
+        - formats them nicely
+        - posts to slack
+    """
     label, start_utc, end_utc = _day_range_utc(TZ_NAME)
     print("Summary window UTC:", start_utc, "→", end_utc)
     items = _fetch_items_between(start_utc, end_utc)

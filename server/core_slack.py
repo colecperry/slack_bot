@@ -1,9 +1,8 @@
 # core_slack.py
 """
-Shared Slack logic (no Flask/Lambda imports here).
+Contains the main business logic for handling slack interactions - slash commands and modal submissions
 - Opens a modal when /standup is used with no text.
 - Saves standups to DynamoDB (via db.py) on inline text and on modal submit.
-- Responds with ephemeral messages or modal updates.
 
 Environment variables expected:
 - SLACK_BOT_TOKEN  : used to call Slack Web API (views.open, chat.postMessage if added later)
@@ -26,7 +25,7 @@ SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN")
 
 def open_modal(trigger_id: str, modal_view: dict) -> dict:
     """
-    Calls Slack's views.open to display a modal.
+    Calls Slack's views.open to display a modal (pop up form).
     Uses a short timeout so the slash command can still return 200 quickly
     (prevents Slack's "dispatch_failed" if the network is slow).
     """
@@ -54,7 +53,7 @@ def open_modal(trigger_id: str, modal_view: dict) -> dict:
 
 def handle_standup(form: dict) -> tuple[int, dict, str]:
     """
-    Slash command handler for /standup.
+    Processes the /standup slash command
     - If user supplies text inline, save immediately and reply ephemerally.
     - If no text, attempt to open a modal (views.open), then return 200 quickly.
     Returns: (status_code, headers_dict, body_string)
@@ -64,7 +63,7 @@ def handle_standup(form: dict) -> tuple[int, dict, str]:
     trigger_id = form.get("trigger_id", "")
     text       = (form.get("text") or "").strip()
 
-    # No inline text → open modal
+    # No inline text → open modal for user input
     if not text:
         modal_view = {
             "type": "modal",
@@ -103,7 +102,7 @@ def handle_standup(form: dict) -> tuple[int, dict, str]:
             }
             return 200, {"Content-Type": "application/json"}, json.dumps(body)
 
-    # Inline text path → save to DynamoDB
+    # If text is provided → save to DynamoDB
     ts_saved = save_standup(user_id=user_id, message=text, user_name=user_name)
 
     # Nice UX: show previous entry if it exists
@@ -122,8 +121,8 @@ def handle_standup(form: dict) -> tuple[int, dict, str]:
 
 def handle_interactive(form: dict) -> tuple[int, dict, str]:
     """
-    Handles interactive events (e.g., modal submissions).
-    Slack posts a form field named 'payload' that is a JSON string.
+    Processes when users submit the modal form
+    Slack posts a form field named 'payload' that is a JSON string (standup text)
     On view_submission:
       - Save to DynamoDB.
       - Replace the modal with a success screen showing current + previous entry.

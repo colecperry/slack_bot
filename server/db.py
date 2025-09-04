@@ -1,6 +1,6 @@
 # db.py
 """
-DynamoDB helpers for saving and fetching standup entries.
+Creates DynamoDB table connection and helpers for saving and fetching standup entries.
 
 Table schema:
   PK: user_id (S)
@@ -19,7 +19,7 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 def save_standup(user_id: str, message: str, user_name: str | None = None) -> str:
-    """Write a standup row and return the ISO timestamp used."""
+    """Write a standup message row with UTC timestamp as primary key"""
     ts = _now_iso()
     item = {"user_id": user_id, "ts": ts, "message": message}
     if user_name:
@@ -28,7 +28,7 @@ def save_standup(user_id: str, message: str, user_name: str | None = None) -> st
     return ts
 
 def get_latest_n(user_id: str, n: int = 1) -> list[dict]:
-    """Return the latest N standups for a user (0..N items)."""
+    """Queries and return the latest N standups for a user sorted by timestamp(0..N items)."""
     resp = _TABLE.query(
         KeyConditionExpression=Key("user_id").eq(user_id),
         ScanIndexForward=False,  # newest first

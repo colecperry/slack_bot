@@ -1,6 +1,6 @@
 # lambda_function.py
 """
-AWS Lambda HTTP handler (for API Gateway "HTTP API" or "REST API").
+AWS Lambda HTTP handler (for API Gateway "HTTP API" or "REST API") -> security layer that checks if requests are really from slack & passes them to main bot logic
 
 Responsibilities here (not in core_slack):
 1) Obtain the exact raw body as Slack sent it (decode if base64).
@@ -29,12 +29,13 @@ SLACK_SIGNING_SECRET = os.environ["SLACK_SIGNING_SECRET"]
 def _hdr(headers: dict, name: str) -> str:
     """
     API Gateway may pass headers with different cases (X-Header vs x-header).
-    This helper normalizes access.
+    This helper normalizes access and find headers regardless of capitalization
     """
     return headers.get(name) or headers.get(name.lower()) or ""
 
 def _verify_slack_signature(headers: dict, raw_body: str) -> bool:
     """
+    Checks if slack actually sent the request.
     Slack signing guide:
       base_string = "v0:{timestamp}:{raw_body}"
       my_sig = "v0=" + HMAC_SHA256(signing_secret, base_string)
@@ -69,7 +70,7 @@ def _verify_slack_signature(headers: dict, raw_body: str) -> bool:
 
 def _response(status: int, headers: dict | None = None, body: str = "") -> dict:
     """
-    Format the Lambda proxy integration response.
+    Formats the response in the structure the AWS API Gateway
     - 'body' must be a string (JSON-encoded if returning JSON).
     - You can set headers like Content-Type.
     """
